@@ -8,13 +8,16 @@
 # `torchrun --nproc_per_node=8 -m flava.native.train config=flava/native/configs/pretrain_debug.yaml`
 
 
+import json
 import time
 from functools import partial
+import traceback
 from typing import Any, Dict, Tuple, Union
 
 import datasets
 import numpy as np
 import torch
+import sys
 import torch.distributed as dist
 from common.data import MultiDataModule
 from flava.definitions import FLAVAArguments
@@ -236,7 +239,7 @@ class Trainer:
         return self.datamodule.on_after_batch_transfer(data, None)
 
     def _log_iteration_times(self, iteration_times):
-        profile_warmup_steps = config.get("profile_warmup_steps", 100)
+        profile_warmup_steps = self.config.get("profile_warmup_steps", 100)
         start_idx = (
             profile_warmup_steps
             if profile_warmup_steps < self.config.training.max_steps
@@ -245,11 +248,21 @@ class Trainer:
         iteration_times = iteration_times[start_idx:]
         avg_it_time = np.mean(iteration_times)
         avg_throughput = (
-            config.training.batch_size * dist.get_world_size()
+            self.config.training.batch_size * dist.get_world_size()
         ) / avg_it_time
         print0(f"Average over {len(iteration_times)} steps")
-        print0(f"Average iteration time {round(avg_it_time,4)}")
-        print0(f"Average throughput {round(avg_throughput,4)}")
+        print0(f"Average iteration time {round(avg_it_time, 4)}")
+        print0(f"Average throughput {round(avg_throughput, 4)}")
+        d = {
+            "sys_argv": sys.argv,
+            "steps": self.steps,
+            "avg_it_time": avg_it_time,
+            "avg_throughput": avg_throughput,
+            "training_config": OmegaConf.to_container(self.config.training),
+            # "model_config": OmegaConf.to_container(self.config.model),
+        }
+
+        open(f"outputs/{round(time.time())}.txt", "w").write(json.dumps(d, indent=4))
 
     def train(self) -> None:
         print0(OmegaConf.to_container(self.config.training))
@@ -288,9 +301,9 @@ class Trainer:
                     dtype=self.half_dtype, enabled=bool(self.scaler)
                 ):
                     output = model(data)
-                print0(
-                    f"after forward pass {torch.cuda.memory_allocated()/1024**3:.3} GB"
-                )
+                # print0(
+                #     f"after forward pass {torch.cuda.memory_allocated()/1024**3:.3} GB"
+                # )
                 self.log(
                     "stats/fwd memory alloc",
                     torch.cuda.memory_allocated() / 1024**3,
@@ -327,16 +340,16 @@ class Trainer:
                 if self.rank == 0:
                     norm_total_loss = total_loss.item() / dist.get_world_size()
 
-                    print(
-                        f"epoch: {self.epochs} step {self.steps} loss: {norm_total_loss:.4}"
-                    )
+                    # print(
+                    #     f"epoch: {self.epochs} step {self.steps} loss: {norm_total_loss:.4}"
+                    # )
                     self.log("train/loss", norm_total_loss)
                     self.log("stats/batch_size", batch_size)
 
                     iteration_times.append(batch_time)
 
                     cuda_info = torch.cuda.memory_stats()
-                    print("cuda alloc retries ", cuda_info.get("num_alloc_retries", 0))
+                    # print("cuda alloc retries ", cuda_info.get("num_alloc_retries", 0))
 
                 self.log(
                     "stats/max_gpu_allocated_gb",
@@ -402,4 +415,19 @@ if __name__ == "__main__":
         enable_tf32()
 
     trainer = Trainer(config)
-    trainer.train()
+    try:
+        trainer.train()
+    except Exception as e:
+        d = {
+            "sys_argv": sys.argv,
+            "training_config": OmegaConf.to_container(config.training),
+            # "model_config": OmegaConf.to_container(config.model),
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+        }
+
+        open(f"outputs/{round(time.time())}.txt", "w").write(json.dumps(d, indent=4))
+        raise e
+
+
+

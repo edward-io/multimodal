@@ -2,7 +2,7 @@ training:
   strategy: fsdp # can be changed to ddp or fsdp
   seed: 1337
 
-  batch_size: 8
+  batch_size: 16
   num_workers: 4
   prefetch_factor: 3
 
@@ -12,8 +12,8 @@ training:
     adam_weight_decay: 0.1
     adam_betas: [0.9, 0.999]
 
-  warmup_steps: 10000
-  max_steps: 100000
+  warmup_steps: 100
+  max_steps: 1000
 
   validation_steps: 5000
   log_interval: 10
@@ -21,9 +21,9 @@ training:
   enable_tf32: True
   enable_amp: True
   half_precision_format: "bfloat16"  # or float16
-  enable_half_reduce_in_fsdp: True  # handles the reduction across devices in half precision
+  enable_half_reduce_in_fsdp: False  # handles the reduction across devices in half precision
 
-  activation_checkpointing: True
+  activation_checkpointing: False
 
 datasets:
   _target_: flava.definitions.TrainingDatasetsInfo

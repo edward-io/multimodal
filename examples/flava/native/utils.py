@@ -30,6 +30,7 @@ except ImportError:
 
 def build_config() -> DictConfig:
     cli_conf = OmegaConf.from_cli()
+    print0("cli_conf", cli_conf)
     yaml_conf = OmegaConf.load(cli_conf.config)
     conf = instantiate(yaml_conf)
     conf = OmegaConf.merge(conf, cli_conf)

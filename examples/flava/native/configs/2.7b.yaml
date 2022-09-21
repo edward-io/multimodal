@@ -12,8 +12,8 @@ training:
     adam_weight_decay: 0.1
     adam_betas: [0.9, 0.999]
 
-  warmup_steps: 10000
-  max_steps: 100000
+  warmup_steps: 10
+  max_steps: 1000
 
   validation_steps: 5000
   log_interval: 10
